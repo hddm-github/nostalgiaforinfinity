@@ -1,23 +1,30 @@
 ARG sourceimage=freqtradeorg/freqtrade
 ARG sourcetag=stable
 
-# Stage 1: Build dependencies
+# =========================
+# Stage 1: dependencies
+# =========================
 FROM ${sourceimage}:${sourcetag} AS builder
 
 USER root
+
 RUN pip install --upgrade pip
 
 COPY --chown=1000:1000 tests/requirements.txt /freqtrade/
 
 USER ftuser
+
 RUN --mount=type=cache,target=/home/ftuser/.cache/pip \
-    pip install --user --no-build-isolation --no-cache-dir -r /freqtrade/requirements.txt
+    pip install --user --no-build-isolation --no-cache-dir \
+    -r /freqtrade/requirements.txt
 
 USER root
-# Fix ownership of user install directory
 RUN chown -R 1000:1000 /home/ftuser/.local
 
-# Stage 2: Final image
+
+# =========================
+# Stage 2: runtime
+# =========================
 FROM ${sourceimage}:${sourcetag}
 
 USER root
@@ -25,6 +32,28 @@ USER root
 COPY --from=builder /home/ftuser/.local /home/ftuser/.local
 COPY --chown=1000:1000 tests/requirements.txt /freqtrade/
 
+# NFI 配置
+COPY --chown=1000:1000 configs /freqtrade/configs
+
+# NFI X7 策略
+COPY --chown=1000:1000 NostalgiaForInfinityX8.py /freqtrade/NostalgiaForInfinityX8.py
+
+# 创建运行目录
+RUN mkdir -p /freqtrade/user_data/logs \
+    && chown -R 1000:1000 /freqtrade/user_data
+
 USER ftuser
 
 ENV PATH=/home/ftuser/.local/bin:$PATH
+
+EXPOSE 8080
+
+CMD [
+    "trade",
+    "--config", "/freqtrade/configs/exampleconfig.json",
+    "--strategy", "NostalgiaForInfinityX8",
+    "--strategy-path", "/freqtrade",
+    "--db-url", "sqlite:////freqtrade/user_data/tradesv3.sqlite",
+    "--log-file", "/freqtrade/user_data/logs/freqtrade.log",
+    "-v"
+]
